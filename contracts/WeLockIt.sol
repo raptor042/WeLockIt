@@ -18,6 +18,9 @@ contract WeLockIt is IWeLockIt {
     using EnumerableSet for EnumerableSet.UintSet;
     using SafeERC20 for IERC20;
 
+    uint256 public lockFee;
+    address private _owner;
+
     struct Lock {
         uint256 id;
         address token;
@@ -38,8 +41,6 @@ contract WeLockIt is IWeLockIt {
         uint256 amount;
     }
 
-    // ID padding from PinkLock v1, as there is a lack of a pausing mechanism
-    // as of now the lastest id from v1 is about 22K, so this is probably a safe padding value.
     uint256 private constant ID_PADDING = 1_000_000;
 
     Lock[] private _locks;
@@ -72,20 +73,21 @@ contract WeLockIt is IWeLockIt {
         uint256 amount,
         uint256 unlockedAt
     );
-    event LockVested(
-        uint256 indexed id,
-        address token,
-        address owner,
-        uint256 amount,
-        uint256 remaining,
-        uint256 timestamp
-    );
     event LockDescriptionChanged(uint256 lockId);
     event LockOwnerChanged(uint256 lockId, address owner, address newOwner);
 
     modifier validLock(uint256 lockId) {
         _getActualIndex(lockId);
         _;
+    }
+
+    modifier onlyOwner {
+        require(msg.sender == _owner, "Not owner");
+        _;
+    }
+
+    constructor() {
+        _owner = msg.sender;
     }
 
     function lock(
@@ -95,7 +97,8 @@ contract WeLockIt is IWeLockIt {
         uint256 amount,
         uint256 unlockDate,
         string memory description
-    ) external override returns (uint256 id) {
+    ) payable external override returns (uint256 id) {
+        require(msg.value >= lockFee, "Send lock fee to proceed");
         require(token != address(0), "Invalid token");
         require(amount > 0, "Amount should be greater than 0");
         require(
@@ -123,121 +126,6 @@ contract WeLockIt is IWeLockIt {
         return id;
     }
 
-    function vestingLock(
-        address owner,
-        address token,
-        bool isLpToken,
-        uint256 amount,
-        uint256 tgeDate,
-        uint256 tgeBps,
-        uint256 cycle,
-        uint256 cycleBps,
-        string memory description
-    ) external override returns (uint256 id) {
-        require(token != address(0), "Invalid token");
-        require(amount > 0, "Amount should be greater than 0");
-        require(tgeDate > block.timestamp, "TGE date should be in the future");
-        require(cycle > 0, "Invalid cycle");
-        require(tgeBps > 0 && tgeBps < 10_000, "Invalid bips for TGE");
-        require(cycleBps > 0 && cycleBps < 10_000, "Invalid bips for cycle");
-        require(
-            tgeBps + cycleBps <= 10_000,
-            "Sum of TGE bps and cycle should be less than 10000"
-        );
-        id = _createLock(
-            owner,
-            token,
-            isLpToken,
-            amount,
-            tgeDate,
-            tgeBps,
-            cycle,
-            cycleBps,
-            description
-        );
-        _safeTransferFromEnsureExactAmount(
-            token,
-            msg.sender,
-            address(this),
-            amount
-        );
-        emit LockAdded(id, token, owner, amount, tgeDate);
-        return id;
-    }
-
-    function multipleVestingLock(
-        address[] calldata owners,
-        uint256[] calldata amounts,
-        address token,
-        bool isLpToken,
-        uint256 tgeDate,
-        uint256 tgeBps,
-        uint256 cycle,
-        uint256 cycleBps,
-        string memory description
-    ) external override returns (uint256[] memory) {
-        require(token != address(0), "Invalid token");
-        require(owners.length == amounts.length, "Length mismatched");
-        require(tgeDate > block.timestamp, "TGE date should be in the future");
-        require(cycle > 0, "Invalid cycle");
-        require(tgeBps > 0 && tgeBps < 10_000, "Invalid bips for TGE");
-        require(cycleBps > 0 && cycleBps < 10_000, "Invalid bips for cycle");
-        require(
-            tgeBps + cycleBps <= 10_000,
-            "Sum of TGE bps and cycle should be less than 10000"
-        );
-        return
-            _multipleVestingLock(
-                owners,
-                amounts,
-                token,
-                isLpToken,
-                [tgeDate, tgeBps, cycle, cycleBps],
-                description
-            );
-    }
-
-    function _multipleVestingLock(
-        address[] calldata owners,
-        uint256[] calldata amounts,
-        address token,
-        bool isLpToken,
-        uint256[4] memory vestingSettings, // avoid stack too deep
-        string memory description
-    ) internal returns (uint256[] memory) {
-        require(token != address(0), "Invalid token");
-        uint256 sumAmount = _sumAmount(amounts);
-        uint256 count = owners.length;
-        uint256[] memory ids = new uint256[](count);
-        for (uint256 i = 0; i < count; i++) {
-            ids[i] = _createLock(
-                owners[i],
-                token,
-                isLpToken,
-                amounts[i],
-                vestingSettings[0], // TGE date
-                vestingSettings[1], // TGE bps
-                vestingSettings[2], // cycle
-                vestingSettings[3], // cycle bps
-                description
-            );
-            emit LockAdded(
-                ids[i],
-                token,
-                owners[i],
-                amounts[i],
-                vestingSettings[0] // TGE date
-            );
-        }
-        _safeTransferFromEnsureExactAmount(
-            token,
-            msg.sender,
-            address(this),
-            sumAmount
-        );
-        return ids;
-    }
-
     function _sumAmount(uint256[] calldata amounts)
         internal
         pure
@@ -251,6 +139,10 @@ contract WeLockIt is IWeLockIt {
             sum += amounts[i];
         }
         return sum;
+    }
+
+    function setLockFee(uint256 fee) external onlyOwner {
+        lockFee = fee;
     }
 
     function _createLock(
@@ -393,11 +285,7 @@ contract WeLockIt is IWeLockIt {
             "You are not the owner of this lock"
         );
 
-        if (userLock.tgeBps > 0) {
-            _vestingUnlock(userLock);
-        } else {
-            _normalUnlock(userLock);
-        }
+        _normalUnlock(userLock);
     }
 
     function _normalUnlock(Lock storage userLock) internal {
@@ -445,62 +333,6 @@ contract WeLockIt is IWeLockIt {
             userLock.token,
             msg.sender,
             unlockAmount,
-            block.timestamp
-        );
-    }
-
-    function _vestingUnlock(Lock storage userLock) internal {
-        uint256 withdrawable = _withdrawableTokens(userLock);
-        uint256 newTotalUnlockAmount = userLock.unlockedAmount + withdrawable;
-        require(
-            withdrawable > 0 && newTotalUnlockAmount <= userLock.amount,
-            "Nothing to unlock"
-        );
-
-        CumulativeLockInfo storage tokenInfo = cumulativeLockInfo[
-            userLock.token
-        ];
-        bool isLpToken = tokenInfo.factory != address(0);
-
-        if (newTotalUnlockAmount == userLock.amount) {
-            if (isLpToken) {
-                _userLpLockIds[msg.sender].remove(userLock.id);
-            } else {
-                _userNormalLockIds[msg.sender].remove(userLock.id);
-            }
-            _tokenToLockIds[userLock.token].remove(userLock.id);
-            emit LockRemoved(
-                userLock.id,
-                userLock.token,
-                msg.sender,
-                newTotalUnlockAmount,
-                block.timestamp
-            );
-        }
-
-        if (tokenInfo.amount <= withdrawable) {
-            tokenInfo.amount = 0;
-        } else {
-            tokenInfo.amount = tokenInfo.amount - withdrawable;
-        }
-
-        if (tokenInfo.amount == 0) {
-            if (isLpToken) {
-                _lpLockedTokens.remove(userLock.token);
-            } else {
-                _normalLockedTokens.remove(userLock.token);
-            }
-        }
-        userLock.unlockedAmount = newTotalUnlockAmount;
-
-        IERC20(userLock.token).safeTransfer(userLock.owner, withdrawable);
-
-        emit LockVested(
-            userLock.id,
-            userLock.token,
-            msg.sender,
-            withdrawable,
-            userLock.amount - userLock.unlockedAmount,
             block.timestamp
         );
     }
