@@ -1,7 +1,15 @@
 require('dotenv').config();
 require("@nomicfoundation/hardhat-toolbox");
 
-const { PRIVATE_KEY, GOERLI_API_URL, MAINNET_API_URL, ETHERSCAN_API_KEY } = process.env;
+const { 
+  PRIVATE_KEY, 
+  GOERLI_API_URL,
+  MAINNET_API_URL,
+  ETHERSCAN_API_KEY, 
+  BSC_API_URL, 
+  NEW_PRIVATE_KEY,
+  BSCSCAN_API_KEY
+} = process.env;
 
 /** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {
@@ -25,6 +33,10 @@ module.exports = {
       url: `${MAINNET_API_URL}`,
       accounts: [`0x${PRIVATE_KEY}`]
     },
+    bsc: {
+      url: `${BSC_API_URL}`,
+      accounts: [`0x${NEW_PRIVATE_KEY}`]
+    },
   },
   paths: {
     sources: "./contracts",
@@ -35,6 +47,6 @@ module.exports = {
     timeout: 40000
   },
   etherscan: {
-    apiKey: ETHERSCAN_API_KEY
+    apiKey: BSCSCAN_API_KEY
   }
 };
