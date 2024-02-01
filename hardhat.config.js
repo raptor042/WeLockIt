@@ -3,18 +3,19 @@ require("@nomicfoundation/hardhat-toolbox");
 
 const { 
   PRIVATE_KEY, 
-  GOERLI_API_URL,
+  SEPOLIA_API_URL,
   MAINNET_API_URL,
   ETHERSCAN_API_KEY, 
-  BSC_API_URL, 
-  NEW_PRIVATE_KEY,
+  BSC_MAINNET_API_URL,
+  BSC_TESTNET_API_URL,
+  PRIVATE__KEY,
   BSCSCAN_API_KEY
 } = process.env;
 
 /** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {
   solidity: {
-    version: "0.8.20",
+    version: "0.8.19",
     settings: {
       optimizer: {
         enabled: true,
@@ -22,20 +23,24 @@ module.exports = {
       }
     }
   },
-  defaultNetwork: "goerli",
+  defaultNetwork: "sepolia",
   networks: {
     hardhat: {},
-    goerli: {
-      url: `${GOERLI_API_URL}`,
-      accounts: [`0x${PRIVATE_KEY}`]
+    sepolia: {
+      url: `${SEPOLIA_API_URL}`,
+      accounts: [`0x${PRIVATE__KEY}`]
     },
     mainnet: {
       url: `${MAINNET_API_URL}`,
       accounts: [`0x${PRIVATE_KEY}`]
     },
     bsc: {
-      url: `${BSC_API_URL}`,
-      accounts: [`0x${NEW_PRIVATE_KEY}`]
+      url: `${BSC_MAINNET_API_URL}`,
+      accounts: [`0x${PRIVATE_KEY}`]
+    },
+    bsctestnet: {
+      url: `${BSC_TESTNET_API_URL}`,
+      accounts: [`0x${PRIVATE__KEY}`]
     },
   },
   paths: {
